@@ -517,6 +517,14 @@ function! projectionist#define_navigation_command(command, patterns) abort
   endfor
 endfunction
 
+function! projectionist#define_timeline_navigation_command(command, patterns) abort
+  for [prefix, excmd] in items(s:prefixes)
+    execute 'command! -buffer -bar -bang -nargs=* -complete=customlist,s:projection_complete'
+          \ prefix . substitute(a:command . 'today', '\A', '', 'g')
+          \ ':execute s:open_timeline_projection("<mods>", "'.excmd.'<bang>",'.string(a:patterns).',<f-args>)'
+  endfor
+endfunction
+
 function! projectionist#activate() abort
   if empty(b:projectionist)
     return
@@ -539,6 +547,9 @@ function! projectionist#activate() abort
   endif
   for [command, patterns] in items(projectionist#navigation_commands())
     call projectionist#define_navigation_command(command, patterns)
+  endfor
+  for [command, patterns] in items(projectionist#timeline_navigation_commands())
+    call projectionist#define_timeline_navigation_command(command, patterns)
   endfor
   for [prefix, excmd] in items(s:prefixes) + [['', 'edit']]
     execute 'command! -buffer -bar -bang -nargs=* -range=-1 -complete=customlist,s:edit_complete'
@@ -674,6 +685,25 @@ function! projectionist#navigation_commands() abort
   return commands
 endfunction
 
+function! projectionist#timeline_navigation_commands() abort
+  let commands = {}
+  for [path, projections] in s:all()
+    for [pattern, projection] in items(projections)
+      let name = s:gsub(get(projection, 'command', get(projection, 'type', get(projection, 'name', ''))), '\A', '')
+      let timeline = get(projection, 'timeline', v:false)
+      if !empty(name) && pattern =~# s:valid_key && timeline == v:true
+        if !has_key(commands, name)
+          let commands[name] = []
+        endif
+        let command = [path, pattern]
+        call add(commands[name], command)
+      endif
+    endfor
+  endfor
+  call filter(commands, '!empty(v:val)')
+  return commands
+endfunction
+
 function! s:open_projection(mods, edit, variants, ...) abort
   let formats = []
   for variant in a:variants
@@ -704,6 +734,14 @@ function! s:open_projection(mods, edit, variants, ...) abort
       break
     endif
   endfor
+  call s:mkdir_p(fnamemodify(target, ':h'))
+  return cmd.mods . a:edit . cmd.pre . ' ' .
+        \ fnameescape(fnamemodify(target, ':~:.'))
+endfunction
+
+function! s:open_timeline_projection(mods, edit, variants, ...) abort
+  let target = substitute(join(a:variants[0], projectionist#slash()), '\*', strftime('%Y-%m-%d'), '')
+  let cmd = s:parse(a:mods, a:000)
   call s:mkdir_p(fnamemodify(target, ':h'))
   return cmd.mods . a:edit . cmd.pre . ' ' .
         \ fnameescape(fnamemodify(target, ':~:.'))
